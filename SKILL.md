@@ -23,9 +23,9 @@ client-research（母：编排 + 合并规则 + 契约）
 └──► wechat-local-parse（子：内部调研，可独立调用）
 ```
 
-## 相关 Skill
-- 子 1：lead-card — 外部调研（公司名→公开信息卡片；**含角色推断 + ⓪30秒结论区 + 三档制 + SCQA话术**，v0.4.0 起按拜访决策序输出）。⚠️ 路径修正：原指向 `../repo/SKILL.md` 已失效（该目录现为 5min-drama-contest），lead-card 实际位于 `/Users/yang/.claude/skills/lead-card/`（GitHub: yang1996202-cpu/lead-card）
-- 子 2：[wechat-local-parse](../wechat-local-parse/SKILL.md) — 内部调研（微信联系人→关系历史卡片；**含角色信号提取**）
+## 相关 Skill（跨仓库引用一律用 GitHub 链接；运行时按 Skill 名调用，不依赖相对路径）
+- 子 1：[lead-card](https://github.com/yang1996202-cpu/lead-card) — 外部调研（公司名→公开信息卡片；**含角色推断 + ⓪30秒结论区 + 三档制 + SCQA话术**，v0.4.0 起按拜访决策序输出）。本地路径：`/Users/yang/.claude/skills/lead-card/`
+- 子 2：[wechat-local-parse](https://github.com/yang1996202-cpu/wechat-local-parse) — 内部调研（微信联系人→关系历史卡片；**含角色信号提取**）。本地路径：`~/.workbuddy/skills/wechat-local-parse/`
 
 ## 使用方式
 ```
