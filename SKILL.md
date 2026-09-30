@@ -1,7 +1,7 @@
 ---
 name: client-research
-version: 0.5.0
-description: 客户调研统一编排（母 Skill，外部+内部→一张统一卡片）。输入公司名(+可选微信联系人)，依次编排子 Skill lead-card(外部调研) 与 wechat-local-parse(内部调研)，每步带检查点验证，按统一 schema 合并为一张客户卡片，核心新增「关键人角色深挖」（职务→职责→KPI→个人价值），确保公司层+个人层双维度可落地。推送飞书。不适用：只要外部调研用 lead-card，只要内部用 wechat-local-parse。
+version: 0.6.0
+description: 客户调研统一编排（母 Skill，外部+内部→一张统一卡片）。输入公司名(+可选微信联系人)，依次编排子 Skill lead-card(外部调研) 与 wechat-local-parse(内部调研)，每步带检查点验证，按统一 schema 合并为一张客户卡片，核心新增「关键人角色深挖」（职务→职责→KPI→个人价值），确保公司层+个人层双维度可落地。支持两类批量数据源：飞书多维表格（优先级=高）与本地 Excel 客户管理表（四象限=重要紧急）。推送飞书。不适用：只要外部调研用 lead-card，只要内部用 wechat-local-parse。
 type: orchestrator
 allowed-tools:
   - Skill
@@ -30,12 +30,25 @@ client-research（母：编排 + 合并规则 + 契约）
 ## 使用方式
 ```
 /client-research {公司名} [--wx <微信昵称/备注>] [--my-product <你的业务>]
+/client-research --source feishu-base --base-token <token> --table-id <id>   # 批量：飞书多维表格
+/client-research --source local-excel --path "/Users/yang/Desktop/线索管理/客户管理表.xlsx"  # 批量：本地 Excel
 ```
+
+## 数据源（两个可选，单客户模式可跳过本节）
+
+| 数据源 | 定位方式 | 筛选规则（避免全表跑） |
+|--------|---------|----------------------|
+| 飞书多维表格 | `lark-cli base +record-list --as bot`（user token 缺失时 bot 身份可完整跑通读表/建文档/发消息） | 「优先级」=高 |
+| 本地 Excel 客户管理表 | sheetagent：`resolve_local_excel` → `read_table`（注意 has_more，用 `get_cell_ranges` 续读） | 「四象限」=重要紧急 |
+
+- **本地表位置**：`/Users/yang/Desktop/线索管理/客户管理表.xlsx`，主 sheet「客户总管理」，含四象限/商机金额/充值推进/客户情况/下一步计划等 CRM 笔记。
+- ⚠️ **表内称呼 ≠ 微信备注**（实测：表内"崔哥"→微信备注"腾帆网络，崔开心"）。批量跑内部调研前，先用 `get_contacts` 模糊搜索（公司名/姓/昵称关键词），搜不到再用 `search_messages` 全库搜公司名关键词定位联系人。
 
 ## 执行流程（检查点机制，失败即停）
 
 ### Step 0：参数解析
 - 公司名必填；`--wx` 可选；`--my-product` 可选，默认 pixmax/瑞云 AIGC 能力。
+- 批量模式（--source）：按上表筛选规则取名单，逐条进入 Step 1-4；单条失败不阻塞其余，结尾汇总说明。
 
 ### Step 1：外部调研
 调用 Skill `lead-card`（公司名 + `--my-product`）。
@@ -43,9 +56,11 @@ client-research（母：编排 + 合并规则 + 契约）
 **检查点**：产出卡片须含「⓪30秒结论区」（一句话判断+ABCD+主打弹药+红线）、「关键人角色推断」（职务→可能职责→KPI）和「我们能提供什么」三档制（主攻/备选/砍掉，每条标注支撑结论的理由）。缺 → 补跑或附"该维度数据不足"标注。
 
 ### Step 2：内部调研（可选）
-若给了 `--wx`，调用 Skill `wechat-local-parse`。
+若给了 `--wx`，调用 Skill `wechat-local-parse`。工具：`mcp__wd-local__*`（WorkBuddy 已连接，12 工具；读文本用 `get_chat_history`，定位人用 `get_contacts` 模糊搜 → 搜不到用 `search_messages` 全库搜公司名）。
 
-**检查点**：须含该联系人的「角色信号」（聊天里暴露的职责、关注点、诉求）。查无联系人 → 标注"无内部数据，角色信息仅靠外部推断"。
+**⚠️ 数据性质红线**：CRM/Excel 里的跟进笔记（客户情况/下一步计划）是 **CRM 基线，不是内部微信调研**——两者在卡片中必须分开标注（"内部基线（CRM笔记）" vs "微信聊天信号"），不得拿 CRM 笔记冒充微信调研结果。
+
+**检查点**：须含该联系人的「角色信号」（聊天里暴露的职责、关注点、诉求）。查无联系人 → 标注"无内部数据，角色信息仅靠外部推断"，不得编造关系历史。wd-local 不可用 → 降级用 CRM 笔记作基线并在卡片顶部声明，不重试超过一次。
 
 ### Step 3：合并（冲突时内部更准、标注置信度）
 
@@ -62,7 +77,7 @@ client-research（母：编排 + 合并规则 + 契约）
 **检查点**：合并卡片含⓪区+作战区（见谁说什么/何时/怎么去/防什么）+附录档案区，「位置与拜访动线」含📍详细位置，关键人角色含 职责/KPI/个人价值 三项，个人层面内容不空。不齐 → 回到子步骤补齐。
 
 ### Step 4：推送飞书
-`lark-cli docs +create --doc-format markdown --content <md> --as user` 建文档；`lark-cli im +messages-send --user-id ou_9e75f985c1aee8df2969ea543c0019d5 --markdown ... --as bot` 发杨京艺。
+`lark-cli docs +create --doc-format markdown --content <md> --as bot` 建文档（bot 建档自动给杨京艺 full_access；user token 补授权后可切回 `--as user` 让文档归个人所有）；`lark-cli im +messages-send --user-id ou_9e75f985c1aee8df2969ea543c0019d5 --markdown ... --as bot` 发杨京艺。
 
 **检查点**：拿到 URL + message_id。失败重试一次。
 
@@ -128,6 +143,7 @@ client-research（母：编排 + 合并规则 + 契约）
 销售调研的价值不在"查到资料"，而在"知道跟这个人说啥"。v0.2 只有公司层映射——知道对面公司要什么，但不知道**他个人**管什么、背什么指标、我们怎么帮他完成 KPI。v0.3 把"人对人"的价值映射补进来：每个关键人拆成 职务→职责→KPI→个人价值，确保拿到卡片就能跟进。
 
 ## 版本
+- **0.6.0 (2026-09-30)**：新增双数据源支持（飞书多维表格「优先级=高」/ 本地 Excel 客户管理表「四象限=重要紧急」）；新增"表内称呼≠微信备注"的联系人定位规则（get_contacts 模糊搜 → search_messages 全库搜兜底）；新增数据性质红线（CRM 跟进笔记≠内部微信调研，卡片须分开标注）；确认 wd-local 在 WorkBuddy 已挂载（12 工具）；Step 4 推送改为 bot 身份（实测跑通，自动授权 full_access）。
 - **0.5.0 (2026-09-08)**：依据《结构思考力》全书框架重构 schema——新增「⓪30秒结论区」（结论先行+ABCD）；「我们能提供什么」改三档制（以上统下）；话术升级 SCQA 四句式；排版从档案序改拜访决策序（⓪→见谁说什么→何时→怎么去→防什么→附录）；合并规则新增"内部信号调档"；修正 lead-card 断链指向。联动 lead-card v0.4.0。
 - **0.4.0 (2026-07-31)**：新增「位置与拜访动线」独立维度（📍详细位置 + 同区串联 + 拜访提示），基础档案要求顶部醒目标位置；响应线下拜访诉求。检查点同步更新。
 - **0.3.0 (2026-07-29)**：新增「关键人角色与个人价值」section（职务→职责→KPI→个人价值四步）；「我们能提供什么」拆公司+个人双维度；谈资拆对个人/对公司；切入时机加个人层理由。检查点同步更新。
